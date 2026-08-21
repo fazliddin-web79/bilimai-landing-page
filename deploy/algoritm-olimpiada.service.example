@@ -1,0 +1,16 @@
+[Unit]
+Description=Algoritm School Olimpiada Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/algoritm-olimpiada
+EnvironmentFile=/opt/algoritm-olimpiada/.env
+ExecStart=/opt/algoritm-olimpiada/.venv/bin/python -m bot
+Restart=always
+RestartSec=5
+User=ubuntu
+
+[Install]
+WantedBy=multi-user.target
