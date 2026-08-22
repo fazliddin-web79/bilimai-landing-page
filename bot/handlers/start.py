@@ -5,18 +5,25 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 
 from bot.config import Config
-from bot.constants import GRADES, OLYMPIAD_LOCATIONS, UNKNOWN_SOURCE
+from bot.constants import GRADES, OLYMPIAD_LOCATIONS, TEST_QUESTION_COUNT, UNKNOWN_SOURCE
 from bot.database import Database, DuplicateTelegramError
 from bot.keyboards import (
     confirmation_keyboard,
     contact_keyboard,
     grades_keyboard,
     locations_keyboard,
+    registered_user_keyboard,
     registration_keyboard,
     remove_keyboard,
 )
 from bot.registration import build_registration_input
-from bot.utils import clean_text, confirmation_text, normalize_phone
+from bot.utils import (
+    clean_text,
+    confirmation_text,
+    normalize_phone,
+    parse_answer_text,
+    score_answers,
+)
 
 router = Router()
 
@@ -30,6 +37,7 @@ class RegistrationStates(StatesGroup):
     neighborhood = State()
     olympiad_location = State()
     confirmation = State()
+    test_answers = State()
 
 
 WELCOME_TEXT = (
@@ -59,14 +67,40 @@ async def start(
             f"Sinf: {existing['grade']}\n"
             f"Olimpiada manzili: {existing['olympiad_location']}\n"
             f"Ishtirokchi kodi: {existing['participant_code']}\n\n"
-            "Iltimos, ushbu kodni saqlab qo'ying.",
-            reply_markup=remove_keyboard(),
+            "Iltimos, ushbu kodni saqlab qo'ying.\n\n"
+            "Sinov javoblarini yuborish uchun pastdagi tugmani bosing.",
+            reply_markup=registered_user_keyboard(),
         )
         return
 
     source = clean_text(command.args or UNKNOWN_SOURCE, 60) or UNKNOWN_SOURCE
     await state.update_data(source=source)
     await message.answer(WELCOME_TEXT, reply_markup=registration_keyboard())
+
+
+@router.message(F.text == "Sinov javoblarini jo'natish")
+async def begin_test_answers(
+    message: Message,
+    state: FSMContext,
+    database: Database,
+) -> None:
+    if message.from_user is None:
+        return
+    registration = await database.get_by_telegram_id(message.from_user.id)
+    if not registration:
+        await message.answer(
+            "Avval olimpiadaga ro'yxatdan o'ting. /start buyrug'ini bosing.",
+            reply_markup=registration_keyboard(),
+        )
+        return
+    await state.set_state(RegistrationStates.test_answers)
+    await message.answer(
+        "30 ta savol javobini bitta xabar qilib yuboring.\n\n"
+        "Format:\n"
+        "1A2B3C4D5A...30D\n\n"
+        "Faqat A, B, C, D variantlari qabul qilinadi.",
+        reply_markup=remove_keyboard(),
+    )
 
 
 @router.message(F.text == "Ro'yxatdan o'tish")
@@ -240,4 +274,64 @@ async def wrong_confirmation(message: Message) -> None:
     await message.answer(
         "Iltimos, 'Tasdiqlayman' yoki 'Qayta boshlash' tugmasini tanlang.",
         reply_markup=confirmation_keyboard(),
+    )
+
+
+@router.message(RegistrationStates.test_answers, F.text)
+async def save_test_answers(
+    message: Message,
+    state: FSMContext,
+    database: Database,
+) -> None:
+    if message.from_user is None or message.text is None:
+        return
+    registration = await database.get_by_telegram_id(message.from_user.id)
+    if not registration:
+        await state.clear()
+        await message.answer(
+            "Avval olimpiadaga ro'yxatdan o'ting. /start buyrug'ini bosing.",
+            reply_markup=registration_keyboard(),
+        )
+        return
+    try:
+        answers_text = parse_answer_text(message.text)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+
+    answer_key = await database.get_answer_key()
+    correct_count = None
+    wrong_questions_text = ""
+    if answer_key:
+        correct_count, wrong_questions = score_answers(
+            answers_text, answer_key["answers_text"]
+        )
+        if wrong_questions:
+            wrong_questions_text = "\nXato savollar: " + ", ".join(
+                str(number) for number in wrong_questions
+            )
+
+    submission = await database.save_answer_submission(
+        registration,
+        answers_text,
+        correct_count,
+        TEST_QUESTION_COUNT,
+    )
+    await state.clear()
+
+    if correct_count is None:
+        await message.answer(
+            "Javoblaringiz qabul qilindi.\n\n"
+            f"Ishtirokchi kodi: {submission['participant_code']}\n"
+            "Admin kalit javoblarni kiritgandan keyin natija hisoblanadi.",
+            reply_markup=registered_user_keyboard(),
+        )
+        return
+
+    await message.answer(
+        "Javoblaringiz qabul qilindi va tekshirildi.\n\n"
+        f"Ishtirokchi kodi: {submission['participant_code']}\n"
+        f"Natija: {correct_count}/{TEST_QUESTION_COUNT}"
+        f"{wrong_questions_text}",
+        reply_markup=registered_user_keyboard(),
     )

@@ -85,6 +85,26 @@ class DatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(data.startswith(b"\xef\xbb\xbf"))
         self.assertIn("participant_code", data.decode("utf-8"))
 
+    async def test_answer_key_and_submission_are_saved(self) -> None:
+        registration = await self.database.create_registration(sample_registration())
+        answers = "".join(f"{index}A" for index in range(1, 31))
+
+        key = await self.database.set_answer_key(answers)
+        submission = await self.database.save_answer_submission(
+            registration,
+            answers,
+            correct_count=30,
+            total_questions=30,
+        )
+
+        self.assertEqual(key["answers_text"], answers)
+        self.assertEqual(submission["participant_code"], "AS-0001")
+        self.assertEqual(submission["correct_count"], 30)
+
+        export = await self.database.export_answer_submissions_csv()
+        self.assertTrue(export.startswith(b"\xef\xbb\xbf"))
+        self.assertIn("Ali Karimov", export.decode("utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

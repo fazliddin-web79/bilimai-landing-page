@@ -9,9 +9,18 @@ from bot.constants import GRADES, OLYMPIAD_LOCATIONS
 
 def registration_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Ro'yxatdan o'tish")]],
+        keyboard=[
+            [KeyboardButton(text="Ro'yxatdan o'tish")],
+            [KeyboardButton(text="Sinov javoblarini jo'natish")],
+        ],
         resize_keyboard=True,
-        one_time_keyboard=True,
+    )
+
+
+def registered_user_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Sinov javoblarini jo'natish")]],
+        resize_keyboard=True,
     )
 
 

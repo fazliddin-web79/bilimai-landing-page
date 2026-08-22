@@ -26,6 +26,20 @@ REGISTRATION_COLUMNS = [
     "updated_at",
 ]
 
+ANSWER_SUBMISSION_COLUMNS = [
+    "id",
+    "participant_code",
+    "student_full_name",
+    "grade",
+    "olympiad_location",
+    "answers_text",
+    "correct_count",
+    "total_questions",
+    "checked_at",
+    "created_at",
+    "updated_at",
+]
+
 
 @dataclass(frozen=True)
 class RegistrationInput:
@@ -89,6 +103,32 @@ class Database:
                     ON registrations(student_full_name);
                 CREATE INDEX IF NOT EXISTS idx_registrations_parent_name
                     ON registrations(parent_full_name);
+
+                CREATE TABLE IF NOT EXISTS answer_keys (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    answers_text TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS answer_submissions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    registration_id INTEGER NOT NULL,
+                    telegram_id INTEGER NOT NULL UNIQUE,
+                    participant_code TEXT NOT NULL,
+                    answers_text TEXT NOT NULL,
+                    correct_count INTEGER,
+                    total_questions INTEGER NOT NULL DEFAULT 30,
+                    checked_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (registration_id)
+                        REFERENCES registrations(id)
+                        ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_answer_submissions_code
+                    ON answer_submissions(participant_code);
                 """
             )
 
@@ -344,4 +384,152 @@ class Database:
         writer.writeheader()
         for row in rows:
             writer.writerow({column: row.get(column, "") for column in REGISTRATION_COLUMNS})
+        return output.getvalue().encode("utf-8")
+
+    async def set_answer_key(self, answers_text: str) -> Dict[str, Any]:
+        return await asyncio.to_thread(self._set_answer_key_sync, answers_text)
+
+    def _set_answer_key_sync(self, answers_text: str) -> Dict[str, Any]:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO answer_keys (id, answers_text, created_at, updated_at)
+                VALUES (1, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    answers_text = excluded.answers_text,
+                    updated_at = excluded.updated_at
+                """,
+                (answers_text, now, now),
+            )
+            row = connection.execute(
+                "SELECT * FROM answer_keys WHERE id = 1"
+            ).fetchone()
+        return dict(row)
+
+    async def get_answer_key(self) -> Optional[Dict[str, Any]]:
+        return await asyncio.to_thread(self._get_answer_key_sync)
+
+    def _get_answer_key_sync(self) -> Optional[Dict[str, Any]]:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM answer_keys WHERE id = 1"
+            ).fetchone()
+        return dict(row) if row else None
+
+    async def save_answer_submission(
+        self,
+        registration: Dict[str, Any],
+        answers_text: str,
+        correct_count: Optional[int],
+        total_questions: int,
+    ) -> Dict[str, Any]:
+        return await asyncio.to_thread(
+            self._save_answer_submission_sync,
+            registration,
+            answers_text,
+            correct_count,
+            total_questions,
+        )
+
+    def _save_answer_submission_sync(
+        self,
+        registration: Dict[str, Any],
+        answers_text: str,
+        correct_count: Optional[int],
+        total_questions: int,
+    ) -> Dict[str, Any]:
+        now = datetime.now().isoformat(timespec="seconds")
+        checked_at = now if correct_count is not None else None
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO answer_submissions (
+                    registration_id, telegram_id, participant_code, answers_text,
+                    correct_count, total_questions, checked_at, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(telegram_id) DO UPDATE SET
+                    registration_id = excluded.registration_id,
+                    participant_code = excluded.participant_code,
+                    answers_text = excluded.answers_text,
+                    correct_count = excluded.correct_count,
+                    total_questions = excluded.total_questions,
+                    checked_at = excluded.checked_at,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    registration["id"],
+                    registration["telegram_id"],
+                    registration["participant_code"],
+                    answers_text,
+                    correct_count,
+                    total_questions,
+                    checked_at,
+                    now,
+                    now,
+                ),
+            )
+            row = connection.execute(
+                """
+                SELECT s.*, r.student_full_name, r.grade, r.olympiad_location
+                FROM answer_submissions s
+                JOIN registrations r ON r.id = s.registration_id
+                WHERE s.telegram_id = ?
+                """,
+                (registration["telegram_id"],),
+            ).fetchone()
+        return dict(row)
+
+    async def all_answer_submissions(self) -> List[Dict[str, Any]]:
+        return await asyncio.to_thread(self._all_answer_submissions_sync)
+
+    def _all_answer_submissions_sync(self) -> List[Dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT s.*, r.student_full_name, r.grade, r.olympiad_location
+                FROM answer_submissions s
+                JOIN registrations r ON r.id = s.registration_id
+                ORDER BY
+                    s.correct_count IS NULL ASC,
+                    s.correct_count DESC,
+                    s.updated_at ASC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    async def update_answer_submission_score(
+        self, submission_id: int, correct_count: int
+    ) -> None:
+        await asyncio.to_thread(
+            self._update_answer_submission_score_sync,
+            submission_id,
+            correct_count,
+        )
+
+    def _update_answer_submission_score_sync(
+        self, submission_id: int, correct_count: int
+    ) -> None:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE answer_submissions
+                SET correct_count = ?, checked_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (correct_count, now, now, submission_id),
+            )
+
+    async def export_answer_submissions_csv(self) -> bytes:
+        rows = await self.all_answer_submissions()
+        output = io.StringIO()
+        output.write("\ufeff")
+        writer = csv.DictWriter(output, fieldnames=ANSWER_SUBMISSION_COLUMNS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {column: row.get(column, "") for column in ANSWER_SUBMISSION_COLUMNS}
+            )
         return output.getvalue().encode("utf-8")

@@ -8,6 +8,9 @@ OLYMPIAD_LOCATIONS = (
     "1-maktab",
 )
 
+ANSWER_OPTIONS = ("A", "B", "C", "D")
+TEST_QUESTION_COUNT = 30
+
 CONSENT_TEXT = (
     "Tasdiqlash orqali ma'lumotlaringiz olimpiadani tashkil etish, "
     "natijalarni yuborish va Algoritm School ta'lim dasturlari haqida "

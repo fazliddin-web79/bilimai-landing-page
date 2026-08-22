@@ -10,9 +10,15 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import FSInputFile, Message
 
 from bot.config import Config
-from bot.constants import GRADES, OLYMPIAD_LOCATIONS
+from bot.constants import GRADES, OLYMPIAD_LOCATIONS, TEST_QUESTION_COUNT
 from bot.database import Database
-from bot.utils import clean_text, normalize_phone, registration_summary
+from bot.utils import (
+    clean_text,
+    normalize_phone,
+    parse_answer_text,
+    registration_summary,
+    score_answers,
+)
 
 router = Router()
 
@@ -34,6 +40,7 @@ class AdminStates(StatesGroup):
     attended_code = State()
     broadcast_text = State()
     edit_command = State()
+    answer_key = State()
 
 
 def is_admin(message: Message, config: Config) -> bool:
@@ -84,7 +91,10 @@ async def help_command(message: Message, config: Config) -> None:
             "/delete <AS-0001> - arizani o'chirish\n"
             "/attended <AS-0001> - keldi holatiga o'tkazish\n"
             "/edit <AS-0001> <maydon> <yangi qiymat> - arizani tahrirlash\n"
-            "/broadcast <xabar> - barcha ro'yxatdan o'tganlarga xabar yuborish\n\n"
+            "/broadcast <xabar> - barcha ro'yxatdan o'tganlarga xabar yuborish\n"
+            "/setkeys <1A2B...30D> - sinov javob kalitlarini kiritish\n"
+            "/answers - yuborilgan sinov javoblari natijalari\n"
+            "/export_answers - sinov natijalarini CSV qilib olish\n\n"
             "Tahrirlash maydonlari: parent, phone, student, grade, school, "
             "neighborhood, location, source."
         )
@@ -282,6 +292,59 @@ async def broadcast_state(message: Message, state: FSMContext, database: Databas
     await send_broadcast(message, database, clean_text(message.text or "", 3500))
 
 
+@router.message(Command("setkeys"))
+async def set_keys_command(
+    message: Message,
+    command: CommandObject,
+    state: FSMContext,
+    database: Database,
+    config: Config,
+) -> None:
+    if not await require_admin(message, config):
+        return
+    raw_answers = clean_text(command.args or "", 220)
+    if not raw_answers:
+        await state.set_state(AdminStates.answer_key)
+        await message.answer(
+            "30 ta kalit javobni yuboring.\n\n"
+            "Namuna:\n"
+            "1A2B3C4D5A...30D"
+        )
+        return
+    await set_answer_key(message, database, raw_answers)
+
+
+@router.message(AdminStates.answer_key, F.text)
+async def set_keys_state(message: Message, state: FSMContext, database: Database) -> None:
+    await state.clear()
+    await set_answer_key(message, database, clean_text(message.text or "", 220))
+
+
+@router.message(Command("answers"))
+async def answers_command(message: Message, database: Database, config: Config) -> None:
+    if not await require_admin(message, config):
+        return
+    rows = await database.all_answer_submissions()
+    await message.answer(format_answer_rows(rows))
+
+
+@router.message(Command("export_answers"))
+async def export_answers(message: Message, database: Database, config: Config) -> None:
+    if not await require_admin(message, config):
+        return
+    data = await database.export_answer_submissions_csv()
+    with tempfile.NamedTemporaryFile("wb", suffix=".csv", delete=False) as file:
+        file.write(data)
+        path = Path(file.name)
+    try:
+        await message.answer_document(
+            FSInputFile(path, filename="algoritm_school_sinov_natijalari.csv"),
+            caption="Sinov javoblari va natijalari CSV faylga chiqarildi.",
+        )
+    finally:
+        path.unlink(missing_ok=True)
+
+
 async def send_search_results(message: Message, database: Database, query: str) -> None:
     rows = await database.search(query)
     if not rows:
@@ -343,6 +406,26 @@ async def send_broadcast(message: Message, database: Database, text: str) -> Non
     await message.answer(f"Broadcast yakunlandi.\nYuborildi: {sent}\nXatolik: {failed}")
 
 
+async def set_answer_key(message: Message, database: Database, raw_answers: str) -> None:
+    try:
+        answers_text = parse_answer_text(raw_answers)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+
+    await database.set_answer_key(answers_text)
+    submissions = await database.all_answer_submissions()
+    for submission in submissions:
+        correct_count, _ = score_answers(submission["answers_text"], answers_text)
+        await database.update_answer_submission_score(submission["id"], correct_count)
+
+    await message.answer(
+        "Kalit javoblar saqlandi.\n\n"
+        f"Savollar soni: {TEST_QUESTION_COUNT}\n"
+        f"Qayta tekshirilgan javoblar: {len(submissions)}"
+    )
+
+
 def field_validator(field: str) -> Optional[Callable[[str], str]]:
     validators = {
         "phone": normalize_phone,
@@ -384,3 +467,23 @@ def format_rows(title: str, rows: list, detailed: bool = False) -> str:
             )
         lines.append("")
     return "\n".join(lines).strip()
+
+
+def format_answer_rows(rows: list) -> str:
+    if not rows:
+        return "Hali sinov javoblari yuborilmagan."
+    lines = [f"Sinov javoblari: {len(rows)}", ""]
+    for row in rows[:30]:
+        result = (
+            "Kalit kutilmoqda"
+            if row["correct_count"] is None
+            else f"{row['correct_count']}/{row['total_questions']}"
+        )
+        lines.append(
+            f"{row['participant_code']} | {row['student_full_name']} | "
+            f"{row['grade']} | {result}"
+        )
+    if len(rows) > 30:
+        lines.append("")
+        lines.append("Yana natijalar bor. To'liq ro'yxat uchun /export_answers.")
+    return "\n".join(lines)
