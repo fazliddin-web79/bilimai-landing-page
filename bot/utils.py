@@ -11,6 +11,14 @@ def clean_text(value: str, max_length: int = 120) -> str:
     return text
 
 
+def clean_multiline_text(value: str, max_length: int = 3500) -> str:
+    lines = [" ".join(line.strip().split()) for line in value.strip().splitlines()]
+    text = "\n".join(line for line in lines if line)
+    if len(text) > max_length:
+        text = text[:max_length].strip()
+    return text
+
+
 def normalize_phone(value: str) -> str:
     digits = re.sub(r"\D", "", value)
     if digits.startswith("998") and len(digits) == 12:

@@ -1,6 +1,12 @@
 import unittest
 
-from bot.utils import clean_text, normalize_phone, parse_answer_text, score_answers
+from bot.utils import (
+    clean_multiline_text,
+    clean_text,
+    normalize_phone,
+    parse_answer_text,
+    score_answers,
+)
 
 
 class RegistrationHelperTests(unittest.TestCase):
@@ -16,6 +22,14 @@ class RegistrationHelperTests(unittest.TestCase):
     def test_clean_text_collapses_spaces_and_limits_length(self) -> None:
         self.assertEqual(clean_text("  Ali   Valiyev  "), "Ali Valiyev")
         self.assertEqual(clean_text("abcdef", 3), "abc")
+
+    def test_clean_multiline_text_preserves_new_lines(self) -> None:
+        text = "  Salom   ota-onalar!\n\n  Olimpiada: 09:00\n  Manzil: 3-IDUM  "
+
+        self.assertEqual(
+            clean_multiline_text(text),
+            "Salom ota-onalar!\nOlimpiada: 09:00\nManzil: 3-IDUM",
+        )
 
     def test_parse_answer_text_accepts_30_numbered_answers(self) -> None:
         answers = "".join(

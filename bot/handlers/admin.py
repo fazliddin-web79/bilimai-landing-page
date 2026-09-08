@@ -13,6 +13,7 @@ from bot.config import Config
 from bot.constants import GRADES, OLYMPIAD_LOCATIONS, TEST_QUESTION_COUNT
 from bot.database import Database
 from bot.utils import (
+    clean_multiline_text,
     clean_text,
     normalize_phone,
     parse_answer_text,
@@ -278,7 +279,7 @@ async def broadcast_command(
 ) -> None:
     if not await require_admin(message, config):
         return
-    text = clean_text(command.args or "", 3500)
+    text = clean_multiline_text(command.args or "", 3500)
     if not text:
         await state.set_state(AdminStates.broadcast_text)
         await message.answer("Yuboriladigan xabar matnini kiriting.")
@@ -289,7 +290,11 @@ async def broadcast_command(
 @router.message(AdminStates.broadcast_text, F.text)
 async def broadcast_state(message: Message, state: FSMContext, database: Database) -> None:
     await state.clear()
-    await send_broadcast(message, database, clean_text(message.text or "", 3500))
+    await send_broadcast(
+        message,
+        database,
+        clean_multiline_text(message.text or "", 3500),
+    )
 
 
 @router.message(Command("setkeys"))
