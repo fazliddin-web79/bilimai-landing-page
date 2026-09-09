@@ -8,6 +8,10 @@ OLYMPIAD_LOCATIONS = (
     "1-maktab",
 )
 
+OLYMPIAD_SCHEDULES = {
+    "3-IDUM": "13-sentabr 2026, yakshanba kuni soat 08:30",
+}
+
 ANSWER_OPTIONS = ("A", "B", "C", "D")
 TEST_QUESTION_COUNT = 30
 

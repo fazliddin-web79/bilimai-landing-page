@@ -105,6 +105,22 @@ class DatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(export.startswith(b"\xef\xbb\xbf"))
         self.assertIn("Ali Karimov", export.decode("utf-8"))
 
+    async def test_registrations_can_be_filtered_by_location(self) -> None:
+        await self.database.create_registration(sample_registration())
+        await self.database.create_registration(
+            sample_registration(
+                telegram_id=8,
+                phone="+998901111111",
+                student_full_name="Malika Olimova",
+                olympiad_location="13-maktab",
+            )
+        )
+
+        rows = await self.database.registrations_by_location("3-IDUM")
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["student_full_name"], "Ali Karimov")
+
 
 if __name__ == "__main__":
     unittest.main()

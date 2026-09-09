@@ -118,6 +118,7 @@ https://t.me/BOT_USERNAME?start=1maktab
 - `/attended <AS-0001>` - ishtirokchini “keldi” holatiga o'tkazish
 - `/edit <AS-0001> <maydon> <yangi qiymat>` - arizani tahrirlash
 - `/broadcast <xabar>` - ro'yxatdan o'tganlarga xabar yuborish
+- `/broadcast_location <hudud> <xabar>` - faqat tanlangan olimpiada hududiga xabar yuborish
 - `/setkeys <1A2B...30D>` - 30 ta savol uchun kalit javoblarni saqlash
 - `/answers` - o'quvchilar yuborgan sinov javoblari natijalarini ko'rish
 - `/export_answers` - sinov natijalarini CSV qilib olish
@@ -138,6 +139,9 @@ Misollar:
 /attended AS-0001
 /edit AS-0001 grade 3-sinf
 /broadcast Assalomu alaykum! Olimpiada ertaga soat 09:00 da boshlanadi.
+/broadcast_location 3-IDUM Assalomu alaykum!
+3-IDUM hududidagi olimpiada 13-sentabr 2026, yakshanba kuni soat 08:30 da boshlanadi.
+Iltimos, 08:10 gacha yetib keling.
 /setkeys 1A2B3C4D5A6B7C8D9A10B11C12D13A14B15C16D17A18B19C20D21A22B23C24D25A26B27C28D29A30B
 ```
 

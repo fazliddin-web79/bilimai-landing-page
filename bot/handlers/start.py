@@ -21,6 +21,7 @@ from bot.utils import (
     clean_text,
     confirmation_text,
     normalize_phone,
+    olympiad_schedule_text,
     parse_answer_text,
     score_answers,
 )
@@ -65,7 +66,8 @@ async def start(
             "Siz avval ro'yxatdan o'tgansiz.\n\n"
             f"O'quvchi: {existing['student_full_name']}\n"
             f"Sinf: {existing['grade']}\n"
-            f"Olimpiada manzili: {existing['olympiad_location']}\n"
+            f"Olimpiada manzili: {existing['olympiad_location']}"
+            f"{olympiad_schedule_text(existing['olympiad_location'])}\n"
             f"Ishtirokchi kodi: {existing['participant_code']}\n\n"
             "Iltimos, ushbu kodni saqlab qo'ying.\n\n"
             "Sinov javoblarini yuborish uchun pastdagi tugmani bosing.",
@@ -252,7 +254,8 @@ async def confirm_registration(
         "Ro'yxatdan o'tish muvaffaqiyatli yakunlandi!\n\n"
         f"O'quvchi: {saved['student_full_name']}\n"
         f"Sinf: {saved['grade']}\n"
-        f"Olimpiada manzili: {saved['olympiad_location']}\n"
+        f"Olimpiada manzili: {saved['olympiad_location']}"
+        f"{olympiad_schedule_text(saved['olympiad_location'])}\n"
         f"Ishtirokchi kodi: {saved['participant_code']}\n\n"
         "Iltimos, ishtirokchi kodingizni saqlab qo'ying.",
         reply_markup=remove_keyboard(),

@@ -241,6 +241,21 @@ class Database:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    async def registrations_by_location(self, location: str) -> List[Dict[str, Any]]:
+        return await asyncio.to_thread(self._registrations_by_location_sync, location)
+
+    def _registrations_by_location_sync(self, location: str) -> List[Dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM registrations
+                WHERE olympiad_location = ?
+                ORDER BY id ASC
+                """,
+                (location,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     async def recent(self, limit: int = 10) -> List[Dict[str, Any]]:
         return await asyncio.to_thread(self._recent_sync, limit)
 

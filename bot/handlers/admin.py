@@ -16,6 +16,7 @@ from bot.utils import (
     clean_multiline_text,
     clean_text,
     normalize_phone,
+    normalize_location,
     parse_answer_text,
     registration_summary,
     score_answers,
@@ -93,6 +94,7 @@ async def help_command(message: Message, config: Config) -> None:
             "/attended <AS-0001> - keldi holatiga o'tkazish\n"
             "/edit <AS-0001> <maydon> <yangi qiymat> - arizani tahrirlash\n"
             "/broadcast <xabar> - barcha ro'yxatdan o'tganlarga xabar yuborish\n"
+            "/broadcast_location <hudud> <xabar> - faqat tanlangan hududga xabar yuborish\n"
             "/setkeys <1A2B...30D> - sinov javob kalitlarini kiritish\n"
             "/answers - yuborilgan sinov javoblari natijalari\n"
             "/export_answers - sinov natijalarini CSV qilib olish\n\n"
@@ -287,6 +289,35 @@ async def broadcast_command(
     await send_broadcast(message, database, text)
 
 
+@router.message(Command("broadcast_location"))
+async def broadcast_location_command(
+    message: Message,
+    command: CommandObject,
+    database: Database,
+    config: Config,
+) -> None:
+    if not await require_admin(message, config):
+        return
+    args = command.args or ""
+    parsed = parse_location_broadcast_args(args)
+    if not parsed:
+        await message.answer(
+            "Format:\n"
+            "/broadcast_location 3-IDUM xabar matni\n\n"
+            "Hududlar: " + ", ".join(OLYMPIAD_LOCATIONS)
+        )
+        return
+    location, text = parsed
+    rows = await database.registrations_by_location(location)
+    await send_broadcast(
+        message,
+        database,
+        text,
+        rows=rows,
+        title=f"{location} hududiga broadcast boshlandi",
+    )
+
+
 @router.message(AdminStates.broadcast_text, F.text)
 async def broadcast_state(message: Message, state: FSMContext, database: Database) -> None:
     await state.clear()
@@ -396,11 +427,24 @@ async def edit_registration(message: Message, database: Database, args: str) -> 
     await message.answer("Ariza yangilandi:\n\n" + registration_summary(row))
 
 
-async def send_broadcast(message: Message, database: Database, text: str) -> None:
-    rows = await database.all_registrations()
+async def send_broadcast(
+    message: Message,
+    database: Database,
+    text: str,
+    rows: Optional[list] = None,
+    title: str = "Broadcast boshlandi",
+) -> None:
+    if rows is None:
+        rows = await database.all_registrations()
     sent = 0
     failed = 0
-    await message.answer(f"Broadcast boshlandi. Jami: {len(rows)}")
+    if not text:
+        await message.answer("Xabar matni bo'sh bo'lmasligi kerak.")
+        return
+    if not rows:
+        await message.answer("Bu broadcast uchun foydalanuvchilar topilmadi.")
+        return
+    await message.answer(f"{title}. Jami: {len(rows)}")
     for row in rows:
         try:
             await message.bot.send_message(int(row["telegram_id"]), text)
@@ -447,9 +491,20 @@ def validate_grade(value: str) -> str:
 
 
 def validate_location(value: str) -> str:
-    if value not in OLYMPIAD_LOCATIONS:
-        raise ValueError("Hudud tugmalardagi qiymatlardan biri bo'lishi kerak.")
-    return value
+    return normalize_location(value)
+
+
+def parse_location_broadcast_args(args: str) -> Optional[tuple]:
+    raw = args.lstrip()
+    if not raw:
+        return None
+    for location in OLYMPIAD_LOCATIONS:
+        if raw.casefold().startswith(location.casefold()):
+            text = clean_multiline_text(raw[len(location):], 3500)
+            if not text:
+                return None
+            return location, text
+    return None
 
 
 def format_counts(counts: dict) -> str:

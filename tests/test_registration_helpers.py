@@ -4,6 +4,8 @@ from bot.utils import (
     clean_multiline_text,
     clean_text,
     normalize_phone,
+    normalize_location,
+    olympiad_schedule_text,
     parse_answer_text,
     score_answers,
 )
@@ -30,6 +32,14 @@ class RegistrationHelperTests(unittest.TestCase):
             clean_multiline_text(text),
             "Salom ota-onalar!\nOlimpiada: 09:00\nManzil: 3-IDUM",
         )
+
+    def test_normalize_location_is_case_insensitive(self) -> None:
+        self.assertEqual(normalize_location("3-idum"), "3-IDUM")
+        self.assertEqual(normalize_location("13-MAKTAB"), "13-maktab")
+
+    def test_olympiad_schedule_text_exists_for_3_idum(self) -> None:
+        self.assertIn("13-sentabr 2026", olympiad_schedule_text("3-IDUM"))
+        self.assertEqual(olympiad_schedule_text("13-maktab"), "")
 
     def test_parse_answer_text_accepts_30_numbered_answers(self) -> None:
         answers = "".join(

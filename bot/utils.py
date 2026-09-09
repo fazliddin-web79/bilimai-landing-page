@@ -1,7 +1,13 @@
 import re
 from typing import Any, Dict, List, Tuple
 
-from bot.constants import ANSWER_OPTIONS, CONSENT_TEXT, TEST_QUESTION_COUNT
+from bot.constants import (
+    ANSWER_OPTIONS,
+    CONSENT_TEXT,
+    OLYMPIAD_LOCATIONS,
+    OLYMPIAD_SCHEDULES,
+    TEST_QUESTION_COUNT,
+)
 
 
 def clean_text(value: str, max_length: int = 120) -> str:
@@ -77,6 +83,21 @@ def answers_to_list(value: str) -> List[str]:
     return re.findall(r"\d+([ABCD])", normalized)
 
 
+def normalize_location(value: str) -> str:
+    normalized = clean_text(value, 40).casefold()
+    for location in OLYMPIAD_LOCATIONS:
+        if normalized == location.casefold():
+            return location
+    raise ValueError("Bunday olimpiada hududi topilmadi.")
+
+
+def olympiad_schedule_text(location: str) -> str:
+    schedule = OLYMPIAD_SCHEDULES.get(location)
+    if not schedule:
+        return ""
+    return f"\nOlimpiada vaqti: {schedule}"
+
+
 def registration_summary(data: Dict[str, Any]) -> str:
     username = data.get("telegram_username") or "-"
     attended = "Keldi" if int(data.get("attended", 0)) else "Kelmagan"
@@ -88,7 +109,8 @@ def registration_summary(data: Dict[str, Any]) -> str:
         f"Sinf: {data.get('grade', '-')}\n"
         f"Maktab: {data.get('current_school', '-')}\n"
         f"Mahalla/hudud: {data.get('neighborhood', '-')}\n"
-        f"Olimpiada manzili: {data.get('olympiad_location', '-')}\n"
+        f"Olimpiada manzili: {data.get('olympiad_location', '-')}"
+        f"{olympiad_schedule_text(data.get('olympiad_location', ''))}\n"
         f"Manba: {data.get('source', '-')}\n"
         f"Telegram: {data.get('telegram_id', '-')} (@{username})\n"
         f"Holat: {attended}\n"
@@ -105,7 +127,8 @@ def confirmation_text(data: Dict[str, Any]) -> str:
         f"Sinf: {data['grade']}\n"
         f"Maktab: {data['current_school']}\n"
         f"Mahalla/hudud: {data['neighborhood']}\n"
-        f"Olimpiada manzili: {data['olympiad_location']}\n"
+        f"Olimpiada manzili: {data['olympiad_location']}"
+        f"{olympiad_schedule_text(data['olympiad_location'])}\n"
         f"Reklama manbasi: {data['source']}\n\n"
         f"{CONSENT_TEXT}"
     )
